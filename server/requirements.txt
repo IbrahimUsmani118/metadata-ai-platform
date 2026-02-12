@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+google-generativeai
+supabase
+python-dotenv
+python-multipart
+requests
+httpx
