@@ -8,3 +8,5 @@ python-multipart
 requests
 httpx
 protobuf<5.0.0
+grpcio
+grpcio-status
