@@ -6,22 +6,29 @@ cleanup() {
     kill 0
 }
 
-# Trap the exit signal
 trap cleanup EXIT
 
 echo "🚀 Starting Metadata AI Project..."
 
-concurrently "cd server && source venv/bin/activate && uvicorn main:app --reload" "cd client && npm run dev"
-
-# 1. Start Backend (in background)
-# We navigate in a subshell so we don't lose our place
-(cd server && source venv/bin/activate && uvicorn main:app --reload) &
-
-# 2. Wait a second for the backend to initialize
-sleep 2
-
-# 3. Start Frontend (in background)
+# 1. Client: go into client and start frontend (in background)
+echo "📦 Client: starting from client/..."
 (cd client && npm run dev) &
 
-# 4. Keep script running to show logs
+sleep 1
+
+# 2. Server: go into server, ensure venv + deps, then start backend from there
+echo "📦 Server: setting up and starting from server/..."
+(
+  cd server
+  if [ ! -d "venv" ]; then
+    echo "   Creating venv in server/..."
+    python3 -m venv venv
+  fi
+  . venv/bin/activate
+  echo "   Installing Python deps in server/..."
+  pip install -r requirements.txt
+  echo "   Starting backend (uvicorn) from server/..."
+  uvicorn main:app --reload
+) &
+
 wait

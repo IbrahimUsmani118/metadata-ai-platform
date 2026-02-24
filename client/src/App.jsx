@@ -1,89 +1,226 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
 
-function App() {
-  const [oldSchema, setOldSchema] = useState('{"id": 1, "status": "active"}')
-  const [newSchema, setNewSchema] = useState('{"id": "1", "status": "active", "archived": false}')
-  const [analysis, setAnalysis] = useState(null)
-  const [loading, setLoading] = useState(false)
+const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:8000';
+function truncate(str, max = 60) {
+  const s = typeof str === 'string' ? str : JSON.stringify(str ?? '')
+  return s.length <= max ? s : s.slice(0, max) + '…'
+}
 
-  const handleCompare = async () => {
-    setLoading(true)
-    setAnalysis(null)
+function App() {
+  const [analyses, setAnalyses] = useState(null)
+  const [loadingAnalyses, setLoadingAnalyses] = useState(false)
+  const [health, setHealth] = useState(null)
+  const [selectedRowId, setSelectedRowId] = useState(null)
+
+  useEffect(() => {
+    axios.get(`${API_BASE}/health`).then((r) => setHealth(r.data)).catch(() => setHealth({ status: 'error' }))
+    loadAnalyses()
+  }, [])
+
+  const loadAnalyses = async () => {
+    setLoadingAnalyses(true)
     try {
-      // Pointing to your local FastAPI server
-      const response = await axios.post('http://localhost:8000/analyze', {
-        old_schema: oldSchema,
-        new_schema: newSchema
-      })
-      
-      // Gemini often returns markdown code blocks, this cleans it up for parsing
-      let cleanJson = response.data.analysis.replace(/```json/g, '').replace(/```/g, '')
-      setAnalysis(JSON.parse(cleanJson))
-    } catch (error) {
-      console.error("Error analyzing:", error)
-      alert("Analysis failed. Check console.")
+      const r = await axios.get(`${API_BASE}/analyses`)
+      const rows = Array.isArray(r.data) ? r.data : []
+      setAnalyses(
+        rows.map((row) => ({
+          id: row.id,
+          old_schema: row.old_schema ?? '',
+          new_schema: row.new_schema ?? '',
+          is_breaking: Boolean(row.is_breaking),
+          ai_summary: row.ai_summary ?? row.raw_response ?? '',
+          created_at: row.created_at,
+        }))
+      )
+    } catch (e) {
+      console.error(e)
+      setAnalyses([])
+      alert('Failed to load analyses from Supabase.')
     }
-    setLoading(false)
+    setLoadingAnalyses(false)
   }
 
+  /** Parse ai_summary from DB: may be plain string or JSON string. */
+  function getSummaryDisplay(raw) {
+    const str = raw ?? ''
+    if (typeof str !== 'string') return String(str)
+    const trimmed = str.trim()
+    if (!trimmed) return '—'
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.summary === 'string') return parsed.summary
+          if (typeof parsed.message === 'string') return parsed.message
+          return JSON.stringify(parsed, null, 2)
+        }
+      } catch {
+        // fall through
+      }
+    }
+    return str
+  }
+
+  const selectRow = (id) => {
+    setSelectedRowId((prev) => (prev === id ? null : id))
+  }
+
+  const isBackendConnected = health?.status === 'ok'
+  const hasNoAnalyses = Array.isArray(analyses) && analyses.length === 0
+  const list = analyses ?? []
+  const selectedRow = selectedRowId != null ? list.find((a) => a.id === selectedRowId || String(a.id) === String(selectedRowId)) : null
+
   return (
-    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1>Metadata AI Analyzer</h1>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-        <div>
-          <h3>Version 1 (Old)</h3>
-          <textarea 
-            value={oldSchema}
-            onChange={(e) => setOldSchema(e.target.value)}
-            rows={15}
-            style={{ width: '100%', fontFamily: 'monospace', padding: '10px' }}
-          />
-        </div>
-        <div>
-          <h3>Version 2 (New)</h3>
-          <textarea 
-            value={newSchema}
-            onChange={(e) => setNewSchema(e.target.value)}
-            rows={15}
-            style={{ width: '100%', fontFamily: 'monospace', padding: '10px' }}
-          />
-        </div>
-      </div>
+    <div style={{ minHeight: '100vh', background: '#fafafa', padding: '1.5rem 2rem' }}>
+      <h1 style={{ margin: '0 0 1rem', fontSize: '1.5rem', fontWeight: 600, color: '#1a202c' }}>
+        Metadata AI Analyzer
+      </h1>
 
-      <div style={{ margin: '2rem 0', textAlign: 'center' }}>
-        <button 
-          onClick={handleCompare} 
-          disabled={loading}
-          style={{ padding: '10px 30px', fontSize: '1.2rem', cursor: 'pointer' }}
+      {health && (
+        <div
+          style={{
+            marginBottom: '1.25rem',
+            padding: '10px 14px',
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            fontSize: '0.875rem',
+            color: '#4a5568',
+          }}
         >
-          {loading ? 'Analyzing with AI...' : 'Analyze Changes'}
+          <strong>Status:</strong>{' '}
+          {health.status === 'ok' ? (
+            <>
+              <span style={{ color: '#276749' }}>Backend OK</span>
+              {' · '}
+              {health.gemini_configured ? <span style={{ color: '#276749' }}>Gemini configured</span> : <span style={{ color: '#c53030' }}>Gemini missing</span>}
+              {' · '}
+              {health.supabase_configured ? <span style={{ color: '#276749' }}>Supabase connected</span> : <span style={{ color: '#c53030' }}>Supabase missing</span>}
+            </>
+          ) : (
+            <span style={{ color: '#c53030' }}>Backend unreachable (start server on port 8000)</span>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={loadAnalyses}
+          disabled={loadingAnalyses}
+          style={{
+            padding: '8px 16px',
+            fontSize: '0.875rem',
+            cursor: loadingAnalyses ? 'not-allowed' : 'pointer',
+            background: '#edf2f7',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+          }}
+        >
+          {loadingAnalyses ? 'Loading...' : 'Refresh from Supabase'}
         </button>
+        <span style={{ fontSize: '0.8125rem', color: '#718096' }}>Data from Supabase only (AI analysis disabled)</span>
       </div>
 
-      {analysis && (
-        <div style={{ 
-          border: '1px solid #ccc', 
-          padding: '2rem', 
-          borderRadius: '8px',
-          backgroundColor: analysis.is_breaking ? '#fff0f0' : '#f0fff4' 
-        }}>
-          <h2>Analysis Result</h2>
-          <h3 style={{ color: analysis.is_breaking ? 'red' : 'green' }}>
-            {analysis.is_breaking ? '⚠️ Breaking Change Detected' : '✅ Safe Update'}
-          </h3>
-          <p><strong>Summary:</strong> {analysis.summary}</p>
-          <ul>
-            {analysis.changes.map((change, idx) => (
-              <li key={idx}>{change}</li>
-            ))}
-          </ul>
+      {/* Main table: analyses from Supabase */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', marginBottom: '1.5rem' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontWeight: 600, fontSize: '0.9375rem' }}>
+          Analyses (Supabase)
+        </div>
+        {analyses === null ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#718096' }}>Loading…</div>
+        ) : hasNoAnalyses ? (
+          <div
+            style={{
+              padding: '2rem',
+              textAlign: 'center',
+              background: '#f7fafc',
+              color: '#4a5568',
+              fontSize: '0.9375rem',
+              lineHeight: 1.5,
+              border: '1px dashed #cbd5e0',
+              margin: '1rem',
+              borderRadius: 8,
+            }}
+          >
+            {isBackendConnected
+              ? 'Database connected. No analyses in Supabase yet. Add rows to the metadata_analyses table to see them here.'
+              : 'Connect the backend and Supabase to see analyses here.'}
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ background: '#f7fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600 }}>Id</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600 }}>Old schema</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600 }}>New schema</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600 }}>Breaking</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600 }}>Summary</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((a, i) => {
+                  const rowId = a.id ?? `idx-${i}`
+                  const isSelected = selectedRowId != null && (String(selectedRowId) === String(rowId) || selectedRowId === rowId)
+                  return (
+                    <tr
+                      key={rowId}
+                      onClick={() => selectRow(rowId)}
+                      style={{
+                        cursor: 'pointer',
+                        background: isSelected ? '#ebf8ff' : undefined,
+                        borderBottom: '1px solid #e2e8f0',
+                      }}
+                    >
+                      <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>{a.id ?? i + 1}</td>
+                      <td style={{ padding: '10px 12px', verticalAlign: 'top', maxWidth: 200, wordBreak: 'break-all' }}>{truncate(a.old_schema, 80)}</td>
+                      <td style={{ padding: '10px 12px', verticalAlign: 'top', maxWidth: 200, wordBreak: 'break-all' }}>{truncate(a.new_schema, 80)}</td>
+                      <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                        {a.is_breaking ? <span style={{ color: '#c53030' }}>⚠️ Yes</span> : <span style={{ color: '#276749' }}>✅ No</span>}
+                      </td>
+                      <td style={{ padding: '10px 12px', verticalAlign: 'top', maxWidth: 280 }}>{truncate(getSummaryDisplay(a.ai_summary), 120)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Detail: selected row full data */}
+      {selectedRow && (
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 10,
+            padding: '1.25rem',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <h3 style={{ margin: '0 0 1rem', fontSize: '1rem' }}>Comparison detail</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#718096', marginBottom: '4px' }}>Old schema</div>
+              <pre style={{ margin: 0, padding: '12px', background: '#f7fafc', borderRadius: 8, fontSize: '0.8125rem', overflow: 'auto', maxHeight: 200 }}>{typeof selectedRow.old_schema === 'string' ? selectedRow.old_schema : JSON.stringify(selectedRow.old_schema, null, 2)}</pre>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#718096', marginBottom: '4px' }}>New schema</div>
+              <pre style={{ margin: 0, padding: '12px', background: '#f7fafc', borderRadius: 8, fontSize: '0.8125rem', overflow: 'auto', maxHeight: 200 }}>{typeof selectedRow.new_schema === 'string' ? selectedRow.new_schema : JSON.stringify(selectedRow.new_schema, null, 2)}</pre>
+            </div>
+          </div>
+          <div style={{ marginTop: '1rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#718096', marginBottom: '4px' }}>Summary</div>
+            <div style={{ padding: '12px', background: selectedRow.is_breaking ? '#fff5f5' : '#f0fff4', borderRadius: 8, fontSize: '0.9375rem', lineHeight: 1.5 }}>{getSummaryDisplay(selectedRow.ai_summary)}</div>
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-export default App;
+export default App
