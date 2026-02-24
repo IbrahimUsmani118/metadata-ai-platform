@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # 1. Load Secrets
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(root_path="/api")
 
 # 2. CORS (Allow Frontend to talk to Backend)
 app.add_middleware(

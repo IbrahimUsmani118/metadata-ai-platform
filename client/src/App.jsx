@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
 
-const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:8000';
+const API_BASE = "/api";
+
 function truncate(str, max = 60) {
   const s = typeof str === 'string' ? str : JSON.stringify(str ?? '')
   return s.length <= max ? s : s.slice(0, max) + '…'
