@@ -1,16 +1,45 @@
-# React + Vite
+# Metadata AI Platform - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React frontend built with Vite for the Metadata AI Platform.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+# Install dependencies
+npm install
 
-## React Compiler
+# Start dev server (with API proxy to localhost:8000)
+npm run dev
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+# Build for production
+npm run build
 
-## Expanding the ESLint configuration
+# Preview production build
+npm run preview
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Lint code
+npm run lint
+```
+
+## Structure
+
+```
+src/
+├── App.jsx      # Main application component
+├── App.css      # App-specific styles
+├── main.jsx     # Entry point
+└── index.css    # Global styles
+```
+
+## Features
+
+- Schema comparison form with AI analysis
+- Analysis history table with detail view
+- Real-time backend health status
+- Responsive design
+
+## Configuration
+
+The Vite dev server proxies `/api/*` requests to `http://localhost:8000`. This is configured in `vite.config.js`.
+
+For production, the API is served from the same origin via Vercel rewrites (see `vercel.json` in root).
