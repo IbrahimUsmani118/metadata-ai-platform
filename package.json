@@ -1,13 +1,21 @@
 {
-  "name": "metadata-ai-analyzer",
+  "name": "metadata-ai-platform",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "AI-powered metadata schema analyzer using Gemini AI and Supabase",
+  "private": true,
   "scripts": {
-    "dev": "concurrently \"cd server && source venv/bin/activate && uvicorn main:app --reload\" \"cd client && npm run dev\""
+    "start": "./start.sh",
+    "dev:client": "cd client && npm run dev",
+    "dev:api": "cd api && python3 -m uvicorn index:app --reload --port 8000",
+    "build": "cd client && npm run build",
+    "lint": "cd client && npm run lint",
+    "install:all": "cd client && npm install && cd ../api && pip install -r requirements.txt"
   },
-  "keywords": [],
+  "keywords": ["metadata", "ai", "schema", "analyzer", "gemini", "supabase"],
   "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "python": ">=3.9"
+  }
 }
